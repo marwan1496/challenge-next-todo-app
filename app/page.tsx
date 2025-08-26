@@ -6,6 +6,8 @@ import UserSetup from '@/components/UserSetup'
 import Header from '@/components/Header'
 import TaskForm from '@/components/TaskForm'
 import TaskList from '@/components/TaskList'
+import ChatbotTrigger from '@/components/ChatbotTrigger'
+import ChatbotPopup from '@/components/ChatbotPopup'
 
 interface User {
   email: string
@@ -16,6 +18,7 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [isChatbotOpen, setIsChatbotOpen] = useState(false)
 
   // Load user from localStorage on mount
   useEffect(() => {
@@ -142,6 +145,12 @@ export default function Home() {
     }
   }
 
+  const handleTaskEnhancement = (enhancedTask: { title: string; description: string; estimatedPomodoros: number }) => {
+    // This will be called when the AI suggests task enhancements
+    console.log('Task enhancement suggested:', enhancedTask)
+    // You can implement logic here to apply the enhancement
+  }
+
   if (!user) {
     return <UserSetup onUserSetup={handleUserSetup} />
   }
@@ -159,6 +168,14 @@ export default function Home() {
           onToggleComplete={handleToggleComplete}
         />
       </main>
+
+      {/* Chatbot Components */}
+      <ChatbotTrigger onClick={() => setIsChatbotOpen(true)} />
+      <ChatbotPopup
+        isOpen={isChatbotOpen}
+        onClose={() => setIsChatbotOpen(false)}
+        onTaskEnhancement={handleTaskEnhancement}
+      />
     </div>
   )
 }
