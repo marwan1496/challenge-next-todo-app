@@ -35,7 +35,10 @@ export async function POST(request: NextRequest) {
       estimatedPomodoros = 1,
     } = await request.json()
 
-    if (!title || !userEmail || !userName) {
+    const normalizedEmail = (userEmail || '').toString().trim().toLowerCase()
+    const normalizedName = (userName || '').toString().trim()
+
+    if (!title || !normalizedEmail || !normalizedName) {
       return withCors(
         { error: 'Missing required fields: title, userEmail, userName' },
         { status: 400 }
@@ -46,15 +49,15 @@ export async function POST(request: NextRequest) {
     const { data: existingUser } = await supabase
       .from('users')
       .select('*')
-      .eq('email', userEmail)
+      .eq('email', normalizedEmail)
       .single()
 
     if (existingUser) {
-      if (existingUser.name !== userName) {
-        await supabase.from('users').update({ name: userName }).eq('email', userEmail)
+      if (existingUser.name !== normalizedName) {
+        await supabase.from('users').update({ name: normalizedName }).eq('email', normalizedEmail)
       }
     } else {
-      await supabase.from('users').insert([{ email: userEmail, name: userName }])
+      await supabase.from('users').insert([{ email: normalizedEmail, name: normalizedName }])
     }
 
     const now = new Date().toISOString()
@@ -64,7 +67,7 @@ export async function POST(request: NextRequest) {
       estimated_pomodoros: Math.max(1, parseInt(estimatedPomodoros, 10) || 1),
       completed_pomodoros: 0,
       completed: false,
-      user_email: userEmail,
+      user_email: normalizedEmail,
       created_at: now,
       updated_at: now,
     }
