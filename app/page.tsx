@@ -175,6 +175,7 @@ export default function Home() {
         isOpen={isChatbotOpen}
         onClose={() => setIsChatbotOpen(false)}
         onTaskEnhancement={handleTaskEnhancement}
+        userEmail={user.email}
       />
     </div>
   )

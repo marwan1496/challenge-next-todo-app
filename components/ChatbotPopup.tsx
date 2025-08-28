@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { MessageCircle, X, Send, Bot, User, Loader2 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 interface Message {
   id: string
@@ -14,20 +15,25 @@ interface ChatbotPopupProps {
   isOpen: boolean
   onClose: () => void
   onTaskEnhancement: (enhancedTask: { title: string; description: string; estimatedPomodoros: number }) => void
+  userEmail?: string
 }
 
-export default function ChatbotPopup({ isOpen, onClose, onTaskEnhancement }: ChatbotPopupProps) {
+export default function ChatbotPopup({ isOpen, onClose, onTaskEnhancement, userEmail }: ChatbotPopupProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       type: 'bot',
-      content: "Hi! I'm your AI productivity assistant. I can help you enhance your tasks, break them down into steps, and make them more actionable. What would you like to work on?",
+      content: "Hi! I'm your AI productivity assistant. I can help enhance tasks or add new ones. Say 'add todo' to create a task, and I'll ask for the title and description.",
       timestamp: new Date()
     }
   ])
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [flowStep, setFlowStep] = useState<null | 'confirm' | 'title' | 'description'>(null)
+  const [tempTitle, setTempTitle] = useState('')
+  const [tempDescription, setTempDescription] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  // N8N webhook no longer used for creation; N8N can still listen to Supabase inserts
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -36,6 +42,16 @@ export default function ChatbotPopup({ isOpen, onClose, onTaskEnhancement }: Cha
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  const pushBot = (text: string) => {
+    const botMessage: Message = {
+      id: (Date.now() + Math.random()).toString(),
+      type: 'bot',
+      content: text,
+      timestamp: new Date()
+    }
+    setMessages(prev => [...prev, botMessage])
+  }
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return
@@ -48,7 +64,80 @@ export default function ChatbotPopup({ isOpen, onClose, onTaskEnhancement }: Cha
     }
 
     setMessages(prev => [...prev, userMessage])
+    const text = inputValue.trim()
     setInputValue('')
+
+    // Add-todo guided flow
+    if (!flowStep && /\b(add\s*(todo|task))\b/i.test(text)) {
+      setFlowStep('confirm')
+      pushBot("Great! Do you want to add a new todo now? (yes/no)")
+      return
+    }
+
+    if (flowStep === 'confirm') {
+      if (/^(y|yes|sure|ok|okay)$/i.test(text)) {
+        setFlowStep('title')
+        pushBot('Awesome. What is the task title?')
+      } else if (/^(n|no|not now)$/i.test(text)) {
+        setFlowStep(null)
+        pushBot('No problem. Say "add todo" anytime to create a task.')
+      } else {
+        pushBot('Please answer yes or no. Do you want to add a new todo now?')
+      }
+      return
+    }
+
+    if (flowStep === 'title') {
+      if (text.length < 2) {
+        pushBot('Please provide a concise, action-oriented title.')
+        return
+      }
+      setTempTitle(text)
+      setFlowStep('description')
+      pushBot('Got it. Add an optional description (or type "skip").')
+      return
+    }
+
+    if (flowStep === 'description') {
+      const description = /^(skip|none|no)$/i.test(text) ? '' : text
+      setTempDescription(description)
+
+      if (!userEmail) {
+        pushBot('User email not available. Please make sure you are signed in.')
+        setFlowStep(null)
+        return
+      }
+
+      try {
+        setIsLoading(true)
+        const now = new Date().toISOString()
+        const { error } = await supabase
+          .from('tasks')
+          .insert([{
+            title: tempTitle,
+            description,
+            estimated_pomodoros: 1,
+            completed_pomodoros: 0,
+            completed: false,
+            user_email: userEmail,
+            created_at: now,
+            updated_at: now
+          }])
+        if (error) throw error
+        pushBot('Your todo has been added. I will enhance it shortly.')
+      } catch (e) {
+        console.error(e)
+        pushBot('Sorry, I could not create the todo. Please try again.')
+      } finally {
+        setIsLoading(false)
+        setFlowStep(null)
+        setTempTitle('')
+        setTempDescription('')
+      }
+      return
+    }
+
+    // Default: send to chat API
     setIsLoading(true)
 
     try {
@@ -58,7 +147,7 @@ export default function ChatbotPopup({ isOpen, onClose, onTaskEnhancement }: Cha
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: inputValue.trim(),
+          message: text,
           conversationHistory: messages
         })
       })
